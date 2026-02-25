@@ -1,0 +1,8 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(conda run -n nlp_env pip install fastapi \"uvicorn[standard]\" line-bot-sdk pythainlp python-dotenv httpx)",
+      "Bash(where python)"
+    ]
+  }
+}

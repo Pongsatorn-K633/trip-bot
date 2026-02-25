@@ -1,0 +1,21 @@
+# Secrets
+.env
+
+# Virtual environment
+venv/
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+
+# Byte-compiled / optimized / DLL files
+*.egg-info/
+dist/
+build/
+
+# IDE
+.vscode/
+.idea/
