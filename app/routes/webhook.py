@@ -71,7 +71,7 @@ def handle_text_message(event: MessageEvent) -> None:
 
     # ── Phase 1: Rule-Based Intent Engine ────────────────────────────────────
     intent = classify_intent(user_text)
-    reply_text = build_response(intent=intent, timestamp_ms=timestamp_ms)
+    reply_text = build_response(intent=intent, timestamp_ms=timestamp_ms, user_text=user_text)
 
     # ── Phase 2 Placeholder: ML Named Entity Recognition ─────────────────────
     # Uncomment the block below once the WangchanBERTa NER model is trained.

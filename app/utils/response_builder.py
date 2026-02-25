@@ -1,4 +1,5 @@
 import json
+import re
 from datetime import datetime, timezone, timedelta
 from pathlib import Path
 
@@ -14,10 +15,29 @@ with open(_DATA_PATH, encoding="utf-8") as _f:
 
 JST = timezone(timedelta(hours=9))
 
+_THAI_MONTHS = {
+    "ม.ค.": 1, "ก.พ.": 2, "มี.ค.": 3, "เม.ย.": 4,
+    "พ.ค.": 5, "มิ.ย.": 6, "ก.ค.": 7, "ส.ค.": 8,
+    "ก.ย.": 9, "ต.ค.": 10, "พ.ย.": 11, "ธ.ค.": 12,
+}
+_DATE_RE = re.compile(
+    r"(\d{1,2})\s*(" + "|".join(re.escape(m) for m in _THAI_MONTHS) + r")"
+)
+
 
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+
+def _extract_date_from_text(text: str) -> str | None:
+    """Extract an explicit Thai date from text, e.g. '29พ.ค.' → '2026-05-29'."""
+    match = _DATE_RE.search(text)
+    if not match:
+        return None
+    day = int(match.group(1))
+    month = _THAI_MONTHS[match.group(2)]
+    return f"2026-{month:02d}-{day:02d}"
+
 
 def _date_from_timestamp(timestamp_ms: int) -> str:
     """Convert LINE event timestamp (ms, UTC) → JST date string YYYY-MM-DD."""
@@ -35,12 +55,17 @@ def _events_for_day(timestamp_ms: int) -> tuple[str, list[dict]]:
 # Public API
 # ---------------------------------------------------------------------------
 
-def build_response(intent: str, timestamp_ms: int) -> str:
+def build_response(intent: str, timestamp_ms: int, user_text: str = "") -> str:
     """
     Map a classified intent + timestamp to a Thai reply string.
-    All itinerary lookups are keyed on the JST date derived from timestamp_ms.
+    If user_text contains an explicit Thai date (e.g. '29พ.ค.'), that date is
+    used for the itinerary lookup instead of the message timestamp.
     """
-    today, events = _events_for_day(timestamp_ms)
+    explicit = _extract_date_from_text(user_text) if user_text else None
+    if explicit:
+        today, events = explicit, ITINERARY.get(explicit, [])
+    else:
+        today, events = _events_for_day(timestamp_ms)
 
     if not events:
         return (
