@@ -13,6 +13,7 @@
 9. [Phase 2 Upgrade Path (ML NER)](#9-phase-2-upgrade-path-ml-ner)
 10. [Adding New Intents](#10-adding-new-intents)
 11. [Environment Variables](#11-environment-variables)
+12. [Learning & Upgrade Roadmap](#12-learning--upgrade-roadmap)
 
 ---
 
@@ -314,13 +315,31 @@ except NotImplementedError:
     pass  # Falls through to Phase 1 result
 ```
 
+### Pre-trained Model Cache (local)
+
+WangchanBERTa is downloaded from HuggingFace Hub on first use and cached locally:
+
+```
+C:\Users\WindowS 10\.cache\huggingface\hub\
+└── models--airesearch--wangchanberta-base-att-spm-uncased\
+    └── snapshots\
+        └── b81d38df6b4755dbedec0bfea863c9956cbb963e\
+            ├── config.json
+            ├── sentencepiece.bpe.model
+            └── tokenizer_config.json
+```
+
+After the first download, `from_pretrained()` loads from cache — no internet required.
+
 ### New dependencies (add to requirements.txt)
 
 ```
 transformers>=4.40.0
 torch>=2.2.0
 sentencepiece>=0.1.99
-accelerate>=0.27.0
+protobuf>=4.0.0
+tiktoken>=0.6.0
+accelerate>=0.27.0   # fine-tuning only
 ```
 
 ---
@@ -355,3 +374,84 @@ No other files need to be changed.
 | `LINE_CHANNEL_ACCESS_TOKEN` | Used to call the LINE Reply API | LINE Developers Console → Messaging API → Channel access token (long-lived) |
 
 Store these in `.env` (never commit this file). See `.env.example` for the template.
+
+---
+
+## 12. Learning & Upgrade Roadmap
+
+This section documents the planned learning path from the current rule-based Phase 1 bot through ML-based NER (Phase 2) to a production LLM-powered chatbot (Phase 3).
+
+---
+
+### Phase 2 — ML-based NLP & Named Entity Recognition
+
+The goal is to understand how transformers process Thai text and to fine-tune WangchanBERTa for NER.
+
+| Step | Topic | What you learn |
+|---|---|---|
+| 1 | **Text preprocessing** | Why subword tokenization (SentencePiece/BPE) outperforms word-level tokenization for Thai; vocabulary size trade-offs |
+| 2 | **Transformer architecture** | Attention mechanism, encoder-only vs. decoder-only models, how BERT/RoBERTa produce contextual embeddings |
+| 3 | **NER & BIO tagging** | BIO scheme (B-LOC, I-LOC, O), token-classification head, how the model labels each subword |
+| 4 | **Fine-tuning WangchanBERTa** | Load `airesearch/wangchanberta-base-att-spm-uncased`, attach a classification head, train on LST20 NER dataset |
+| 5 | **Bot integration** | Implement `extract_entities()` in `app/models/ner_placeholder.py`; uncomment the Phase 2 block in `webhook.py` |
+
+**Why WangchanBERTa instead of PyThaiNLP for Phase 2?**
+
+PyThaiNLP uses dictionary-based word tokenization — fast but produces fixed vocabulary tokens.
+WangchanBERTa uses SentencePiece subword tokenization trained on 78 GB of Thai text,
+producing contextual embeddings that capture word meaning from surrounding context.
+This is required for NER: the same word (e.g., "มัตสึโมโต") can be a location or a person name depending on context.
+
+**Recommended study order:**
+
+```
+1. Read the WangchanBERTa paper (arxiv.org/abs/2101.09635)
+2. Work through HuggingFace "Token Classification" tutorial
+3. Explore the LST20 dataset structure to understand BIO labels
+4. Run the fine-tuning notebook locally (requires accelerate — see requirements.txt)
+5. Swap the stub in ner_placeholder.py with the trained pipeline
+```
+
+---
+
+### Phase 3 — LLM-powered Chatbot (Production Standard)
+
+The goal is to understand why Large Language Models replace intent engines entirely, and how to integrate one into the bot.
+
+| Step | Topic | What you learn |
+|---|---|---|
+| 1 | **Why LLMs differ** | Decoder-only architecture, autoregressive generation, emergent instruction-following without task-specific fine-tuning |
+| 2 | **Prompt engineering** | System prompts, few-shot examples, structured output (JSON mode), temperature/top-p control |
+| 3 | **Context injection (RAG)** | Embed the itinerary JSON into the prompt; for larger documents, use vector search to retrieve only relevant chunks |
+| 4 | **Replace the intent engine** | Remove `intent_engine.py` and `response_builder.py`; pass `user_text + itinerary context` directly to the LLM API |
+
+**What a Phase 3 webhook handler looks like (conceptually):**
+
+```python
+system_prompt = f"""
+คุณเป็นผู้ช่วยท่องเที่ยวภาษาไทย ตอบตามข้อมูลทริปต่อไปนี้เท่านั้น:
+{json.dumps(ITINERARY, ensure_ascii=False)}
+"""
+
+reply_text = llm_client.chat(
+    system=system_prompt,
+    user=user_text,
+)
+```
+
+The LLM handles date extraction, intent detection, and response formatting in one step — no rules required.
+
+**RAG is needed when:**
+- The itinerary is too large to fit in the context window
+- You want to answer questions across multiple trips
+- You need to retrieve from external knowledge bases
+
+---
+
+### Architecture Evolution Summary
+
+| Phase | NLP Approach | Thai Tokenizer | Date Handling | Flexibility |
+|---|---|---|---|---|
+| **1 (current)** | Keyword set intersection | PyThaiNLP newmm | Regex + timestamp | Low — every case hand-coded |
+| **2 (next)** | WangchanBERTa NER | SentencePiece BPE | Extracted entity | Medium — handles free-form locations |
+| **3 (production)** | LLM + context injection | Model-internal | LLM infers | High — understands arbitrary Thai queries |
