@@ -315,19 +315,118 @@ except NotImplementedError:
     pass  # Falls through to Phase 1 result
 ```
 
+### Entity Extraction Strategy — Which Tool for What
+
+Testing `Porameht/wangchanberta-thainer-corpus-v2-2` on itinerary queries revealed that
+different entity types need different extraction tools:
+
+| Entity | Example | Best Tool | Reason |
+|---|---|---|---|
+| Date with month | `"29 พ.ค."`, `"29 พฤษภาคม"` | **Regex** | Fixed pattern; NER returns `''` artifact |
+| Date without month | `"วันที่ 29"` | **Regex** | `\d+` pattern is simpler and reliable |
+| Time | `"15:00"`, `"บ่ายสาม"` | **Regex** | NER produces `''` and `'.'` subword artifacts |
+| Known place names | `"มัตสึโมโต"`, `"ฮาคุบะ"` | **Gazetteer** | Itinerary is fixed; NER gives partial match at low score |
+| Unknown place names | Any arbitrary city | **NER** | Can't enumerate; NER handles open vocabulary |
+
+**Decision rule:**
+```
+Is the set of possible values finite and known in advance?
+    YES → Gazetteer (exact match) or Regex (pattern match)
+    NO  → NER (open vocabulary, but needs fine-tuning for domain-specific names)
+```
+
+**Recommended hybrid pipeline:**
+```python
+# 1. Date → Regex (existing response_builder.py logic — keep as-is)
+date = _extract_date_from_text(user_text)
+
+# 2. Known places → Gazetteer
+KNOWN_PLACES = ["มัตสึโมโต", "คามิโคจิ", "ฮาคุบะ", "โตเกียว"]
+location = next((p for p in KNOWN_PLACES if p in user_text), None)
+
+# 3. Unknown places → NER (after fine-tuning, with artifact filtering)
+if not location:
+    location = extract_location_via_ner(user_text)  # filter empty/punctuation results
+```
+
+**NER artifact filtering** (always apply in production):
+```python
+for ent in ner_results:
+    word = ent["word"].strip()
+    if not word or word in {".", ",", ":", "-"}:
+        continue  # skip empty string and punctuation artifacts
+    if ent["score"] < 0.7:
+        continue  # skip low-confidence predictions
+```
+
+NER's real value for this bot arrives **after fine-tuning** — when trips expand beyond the hard-coded place list.
+
+### NER Output Artifacts — Are They Normal?
+
+**Yes — `''` and `'.'` artifacts are a known post-processing issue, not a model defect.**
+
+Root cause: `aggregation_strategy="simple"` reconstructs words by stripping the `▁` (SentencePiece word-start prefix). Two edge cases produce garbage:
+
+| Artifact | Why it happens |
+|---|---|
+| `''` (empty string) | Token was only `▁` (a space piece with no word characters); stripping `▁` leaves nothing |
+| `'.'` (punctuation) | Abbreviation like `น.` gets split into `น` + `.`; the `.` piece survives aggregation as a standalone entity |
+
+The NER model itself classified correctly — the artifact is in the text reconstruction step only.
+
+**Every production NER system applies post-processing filters.** Raw NER output is never used directly:
+
+```
+NER raw output  →  filter empty/punctuation  →  filter low score  →  merge with gazetteer  →  bot logic
+```
+
+**Is NER unsuitable for chatbots because of this?**
+
+No. NER is widely used in production chatbots — but always as one layer in a pipeline:
+
+| Problem observed | Root cause | Fix |
+|---|---|---|
+| `''` artifact | Subword space piece | Filter empty strings |
+| `'.'` artifact | Punctuation in abbreviation | Filter punctuation tokens |
+| Partial place name (`'มัตสึ'`) | Japanese names rare in training data | Fine-tune or use gazetteer |
+| Date `"29"` not extracted | Model expects richer date context | Use regex instead |
+
+The NER artifacts are predictable and filterable. The bigger limitation for this bot is the **domain mismatch** (Japanese place names in Thai training data) — which is solved by fine-tuning or a gazetteer.
+
 ### Pre-trained Model Cache (local)
 
-WangchanBERTa is downloaded from HuggingFace Hub on first use and cached locally:
+All HuggingFace models are downloaded on first use and cached at:
 
 ```
 C:\Users\WindowS 10\.cache\huggingface\hub\
-└── models--airesearch--wangchanberta-base-att-spm-uncased\
-    └── snapshots\
-        └── b81d38df6b4755dbedec0bfea863c9956cbb963e\
-            ├── config.json
-            ├── sentencepiece.bpe.model
-            └── tokenizer_config.json
 ```
+
+> **Note:** This is a hidden folder. Enable "Show hidden items" in File Explorer to see it.
+
+Models downloaded so far:
+
+```
+C:\Users\WindowS 10\.cache\huggingface\hub\
+│
+├── models--airesearch--wangchanberta-base-att-spm-uncased\
+│   └── snapshots\
+│       └── b81d38df6b4755dbedec0bfea863c9956cbb963e\
+│           ├── config.json
+│           ├── sentencepiece.bpe.model
+│           └── tokenizer_config.json
+│
+└── models--Porameht--wangchanberta-thainer-corpus-v2-2\
+    └── snapshots\
+        └── <snapshot-hash>\
+            ├── config.json          ← includes id2label (32 NER labels)
+            ├── pytorch_model.bin    ← fine-tuned weights (~500 MB)
+            └── tokenizer files
+```
+
+| Model | Purpose |
+|---|---|
+| `airesearch/wangchanberta-base-att-spm-uncased` | Base encoder — tokenizer experiments, Step 1 learning |
+| `Porameht/wangchanberta-thainer-corpus-v2-2` | Fine-tuned NER — LOCATION, DATE, TIME, FACILITY extraction |
 
 After the first download, `from_pretrained()` loads from cache — no internet required.
 

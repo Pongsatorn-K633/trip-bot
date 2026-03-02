@@ -54,6 +54,57 @@ Tokens: ["จาก", "ฮาคุบะ", "ไป", "คามิโคจิ"
 Labels: [O,     B-LOC,    O,    B-LOC      ]
 ```
 
+#### NER vs Text Classification — two different tasks, same base model
+
+Both tasks use WangchanBERTa as the encoder, but attach different heads:
+
+```
+WangchanBERTa encoder
+        │
+        ├──► Token Classification Head  →  NER
+        │     (one label per token)         AutoModelForTokenClassification
+        │
+        └──► Sequence Classification Head  →  Text Classification / Intent
+              (one label per [CLS] token)      AutoModelForSequenceClassification
+```
+
+| | NER | Text Classification |
+|---|---|---|
+| Output | 1 label per token | 1 label per sentence |
+| Labels | `B-LOC`, `I-DATE`, `O` … | `query_itinerary`, `greeting` … |
+| Loss computed on | Every token | Only `[CLS]` token |
+| Answers | *What* entities are in the text | *What* the user wants to do |
+
+Fine-tuning for NER and fine-tuning for text classification are **separate training runs** with separate datasets, even though both start from the same checkpoint.
+
+#### Do you need both for this bot?
+
+NER extracts *what* is in the text (date, place). Intent classification determines *what action* to take (query, delete, add).
+
+| Bot complexity | What you need |
+|---|---|
+| Single-purpose — show activities only (current bot) | NER only — everything is implicitly `query_itinerary` |
+| Multi-action — query + add + delete | NER + Intent classification |
+| Full assistant — arbitrary tasks | LLM handles both implicitly |
+
+For the current itinerary bot, **NER alone is sufficient**. Intent classification becomes necessary only when the bot supports multiple actions on the same entity.
+
+#### PyThaiNLP NER vs WangchanBERTa NER
+
+PyThaiNLP ships a built-in NER tagger (CRF-based). It is simpler but weaker:
+
+| | PyThaiNLP NER | WangchanBERTa NER |
+|---|---|---|
+| Model type | CRF — classical ML | RoBERTa + token classification head |
+| Tokenizer | newmm (dictionary word-level) | SentencePiece subword |
+| Context awareness | None — labels each token independently | Full bidirectional attention |
+| Size | ~MB, instant | ~500 MB, needs decent CPU/GPU |
+| Use case | Quick prototype | Production accuracy |
+
+The critical difference is **context**. CRF labels tokens one by one using local features. A transformer attends to the entire sentence, so the same surface form (e.g. "มัตสึโมโต") can be correctly labeled LOC or PERSON depending on surrounding words.
+
+**Recommended order:** get PyThaiNLP NER working first to understand BIO output format, then replicate with WangchanBERTa to feel the quality difference.
+
 ---
 
 ### Step 4 — Fine-Tuning WangchanBERTa for NER
