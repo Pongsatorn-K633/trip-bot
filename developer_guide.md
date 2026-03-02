@@ -515,42 +515,106 @@ This is required for NER: the same word (e.g., "มัตสึโมโต") ca
 
 ### Phase 3 — LLM-powered Chatbot (Production Standard)
 
-The goal is to understand why Large Language Models replace intent engines entirely, and how to integrate one into the bot.
+The goal is to replace the rule-based handler with an LLM while keeping reliable entity extraction.
 
 | Step | Topic | What you learn |
 |---|---|---|
 | 1 | **Why LLMs differ** | Decoder-only architecture, autoregressive generation, emergent instruction-following without task-specific fine-tuning |
-| 2 | **Prompt engineering** | System prompts, few-shot examples, structured output (JSON mode), temperature/top-p control |
-| 3 | **Context injection (RAG)** | Embed the itinerary JSON into the prompt; for larger documents, use vector search to retrieve only relevant chunks |
-| 4 | **Replace the intent engine** | Remove `intent_engine.py` and `response_builder.py`; pass `user_text + itinerary context` directly to the LLM API |
+| 2 | **Prompt engineering** | System prompts, structured output formatting, temperature/top-p control |
+| 3 | **Context injection** | Inject itinerary JSON into the system prompt — no RAG needed for small datasets |
+| 4 | **Replace only the handler** | Remove `intent_engine.py` and `response_builder.py`; keep Regex and Gazetteer for entity extraction |
 
-**What a Phase 3 webhook handler looks like (conceptually):**
+#### Production Architecture — Hybrid Extraction + LLM Generation
 
-```python
-system_prompt = f"""
-คุณเป็นผู้ช่วยท่องเที่ยวภาษาไทย ตอบตามข้อมูลทริปต่อไปนี้เท่านั้น:
-{json.dumps(ITINERARY, ensure_ascii=False)}
-"""
+This is the recommended production pattern: **structured extraction feeds precise context to the LLM**.
 
-reply_text = llm_client.chat(
-    system=system_prompt,
-    user=user_text,
-)
+```
+User input
+    │
+    ├─ Regex       → date     = "2026-05-29"        (exact, reliable)
+    ├─ Gazetteer   → location = "มัตสึโมโต"          (known places)
+    └─ NER         → location fallback               (unknown places, filtered)
+    │
+    ▼
+events = ITINERARY[date]          ← precise lookup, no vector search
+    │
+    ▼
+LLM prompt:
+    system = "ตอบภาษาไทย ใช้ข้อมูลนี้เท่านั้น: {events}"
+    user   = raw user_text
+    │
+    ▼
+LLM generates structured Thai reply with formatted output
 ```
 
-The LLM handles date extraction, intent detection, and response formatting in one step — no rules required.
+**Why this is good production practice:**
 
-**RAG is needed when:**
-- The itinerary is too large to fit in the context window
-- You want to answer questions across multiple trips
-- You need to retrieve from external knowledge bases
+| Concern | How it's handled |
+|---|---|
+| Date/place accuracy | Regex + Gazetteer — 100% reliable, no hallucination risk |
+| Natural language output | LLM generates fluent Thai reply |
+| Formatted output | Instruct LLM via system prompt (bullets, bold times, etc.) |
+| Cost | Regex/Gazetteer are free; only LLM call costs money |
+| Unknown places | NER fallback handles open-vocabulary entities |
+
+**What a Phase 3 webhook handler looks like:**
+
+```python
+import json, requests
+
+ITINERARY = json.load(open("data/tokyo-matsumoto.json"))
+KNOWN_PLACES = ["มัตสึโมโต", "คามิโคจิ", "ฮาคุบะ", "โตเกียว"]
+
+def handle_message(user_text: str, timestamp_ms: int) -> str:
+    # 1. Structured extraction
+    date     = _extract_date_from_text(user_text) or _events_for_day(timestamp_ms)[0]
+    location = next((p for p in KNOWN_PLACES if p in user_text), None)
+    events   = ITINERARY.get(date, [])
+
+    # 2. LLM generates reply from precise context
+    context = json.dumps(events, ensure_ascii=False)
+    response = requests.post("http://localhost:11434/api/chat", json={
+        "model": "typhoon2",
+        "stream": False,
+        "messages": [
+            {
+                "role": "system",
+                "content": f"""คุณเป็นผู้ช่วยท่องเที่ยวภาษาไทย
+ตอบตามข้อมูลนี้เท่านั้น ห้ามแต่งเอง:
+{context}
+
+รูปแบบการตอบ:
+- ขึ้นต้นด้วย [วันที่ — สถานที่]
+- แสดงกิจกรรมเป็น bullet points
+- เวลาใส่ในวงเล็บ เช่น (09:00)"""
+            },
+            {"role": "user", "content": user_text}
+        ]
+    })
+    return response.json()["message"]["content"]
+```
+
+**LLM options (local, free, no API key):**
+
+| Model | Thai quality | Size | Notes |
+|---|---|---|---|
+| `typhoon2` | Best | ~4 GB | Built for Thai by SCB10X |
+| `qwen2.5` | Very good | ~4 GB | Strong multilingual |
+| `llama3.2` | Decent | ~2 GB | Smaller, faster |
+
+Install: `ollama pull typhoon2` (after installing Ollama from ollama.com)
+
+**When RAG becomes necessary:**
+- 10+ trips where full JSON no longer fits in context window
+- Answering questions across external documents (hotel reviews, transport guides)
+- For the current single-trip bot: **not needed**
 
 ---
 
 ### Architecture Evolution Summary
 
-| Phase | NLP Approach | Thai Tokenizer | Date Handling | Flexibility |
-|---|---|---|---|---|
-| **1 (current)** | Keyword set intersection | PyThaiNLP newmm | Regex + timestamp | Low — every case hand-coded |
-| **2 (next)** | WangchanBERTa NER | SentencePiece BPE | Extracted entity | Medium — handles free-form locations |
-| **3 (production)** | LLM + context injection | Model-internal | LLM infers | High — understands arbitrary Thai queries |
+| Phase | Entity Extraction | Response Generation | Flexibility |
+|---|---|---|---|
+| **1 (done)** | Keyword set intersection | Hardcoded templates | Low — every case hand-coded |
+| **2 (learning)** | WangchanBERTa NER | Hardcoded templates | Medium — handles free-form locations |
+| **3 (production)** | Regex + Gazetteer + NER | LLM (Ollama local) | High — natural Thai, formatted output |
