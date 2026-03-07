@@ -1,49 +1,262 @@
 {
-    "2026-05-29": [
-        {"time": "22:00", "origin": "BKK", "destination": "Haneda/Narita", "activity": "เดินทางไปสนามบิน รอขึ้นเครื่อง", "travel_mode": "flight"}
-    ],
-    "2026-05-30": [
-        {"time": "08:00", "origin": "Narita Airport", "destination": "Shinjuku", "activity": "นั่งรถไฟ N'EX เข้าเมือง", "travel_mode": "train"},
-        {"time": "11:00", "origin": "Shinjuku", "destination": "Matsumoto", "activity": "นั่งรถไฟ Azusa Limited Express ไปมัตสึโมโตะ", "travel_mode": "train"},
-        {"time": "15:00", "origin": "Matsumoto Station", "destination": "Hotel", "activity": "เช็คอินเข้าที่พัก พักผ่อน", "travel_mode": "walk"}
-    ],
-    "2026-05-31": [
-        {"time": "06:00", "origin": "Hotel", "destination": "Tateyama Kurobe", "activity": "ตื่นนอน เตรียมตัวไปกำแพงหิมะ", "travel_mode": "none"},
-        {"time": "07:30", "origin": "Matsumoto", "destination": "Tateyama Kurobe Alpine Route", "activity": "เที่ยว Alpine Route", "travel_mode": "bus/train"}
-    ],
-    "2026-06-01": [
-        {"time": "07:00", "origin": "Hotel", "destination": "Hakuba", "activity": "ตื่นนอน เดินทางไป Hakuba", "travel_mode": "train"},
-        {"time": "10:00", "origin": "Hakuba Station", "destination": "Oide Park", "activity": "ถ่ายรูปที่ Oide Park", "travel_mode": "walk/bus"},
-        {"time": "13:00", "origin": "Oide Park", "destination": "Happo Pond", "activity": "เดินเขา Happo Pond", "travel_mode": "hike"},
-        {"time": "17:00", "origin": "Hakuba", "destination": "Matsumoto", "activity": "เดินทางกลับที่พัก", "travel_mode": "train"}
-    ],
-    "2026-06-02": [
-        {"time": "06:30", "origin": "Hotel", "destination": "Kamikochi", "activity": "เดินทางไป Kamikochi (Taisho Pond - Kappabashi)", "travel_mode": "bus"},
-        {"time": "16:00", "origin": "Kamikochi", "destination": "Matsumoto", "activity": "เดินทางกลับที่พัก", "travel_mode": "bus"}
-    ],
-    "2026-06-03": [
-        {"time": "08:00", "origin": "Hotel", "destination": "Matsumoto Station", "activity": "เช็คเอาท์ เตรียมตัวกลับโตเกียว", "travel_mode": "walk"},
-        {"time": "09:30", "origin": "Matsumoto", "destination": "Shinjuku", "activity": "นั่งรถไฟ Azusa กลับโตเกียว", "travel_mode": "train"},
-        {"time": "13:00", "origin": "Shinjuku", "destination": "Tokyo Hotel", "activity": "เช็คอินเข้าที่พักในโตเกียว", "travel_mode": "train"}
-    ],
-    "2026-06-04": [
-        {"time": "09:00", "origin": "Tokyo Hotel", "destination": "Shibuya", "activity": "เที่ยว Shibuya, Harajuku, Omotesando", "travel_mode": "train"},
-        {"time": "18:00", "origin": "Shibuya", "destination": "Tokyo Hotel", "activity": "เดินทางกลับที่พัก", "travel_mode": "train"}
-    ],
-    "2026-06-05": [
-        {"time": "08:30", "origin": "Tokyo Hotel", "destination": "Kamakura", "activity": "นั่งรถไฟไป Day Trip ที่ Kamakura", "travel_mode": "train"},
-        {"time": "10:00", "origin": "Kamakura Station", "destination": "Great Buddha", "activity": "ไหว้พระใหญ่ คามาคุระ", "travel_mode": "walk/bus"},
-        {"time": "17:00", "origin": "Kamakura", "destination": "Tokyo Hotel", "activity": "เดินทางกลับโตเกียว", "travel_mode": "train"}
-    ],
-    "2026-06-06": [
-        {"time": "09:00", "origin": "Tokyo Hotel", "destination": "Asakusa", "activity": "ไหว้พระวัดเซนโซจิ (Sensoji Temple)", "travel_mode": "train"},
-        {"time": "14:00", "origin": "Asakusa", "destination": "Ueno", "activity": "เดินเล่นสวนอูเอโนะ ตลาดอาเมโยโกะ", "travel_mode": "walk/train"}
-    ],
-    "2026-06-07": [
-        {"time": "10:00", "origin": "Tokyo Hotel", "destination": "Ginza/Akihabara", "activity": "ฟรีเดย์ ซื้อของฝาก ช้อปปิ้ง", "travel_mode": "train"}
-    ],
-    "2026-06-08": [
-        {"time": "08:00", "origin": "Tokyo Hotel", "destination": "Narita Airport", "activity": "เช็คเอาท์ นั่งรถไฟ N'EX ไปสนามบิน", "travel_mode": "train"},
-        {"time": "11:00", "origin": "Narita Airport", "destination": "BKK", "activity": "เตรียมตัวขึ้นเครื่องกลับกรุงเทพฯ", "travel_mode": "flight"}
-    ]
+  "2026-05-29": [
+    {
+      "time": "22:00",
+      "origin": "Bangkok",
+      "destination": "Suvarnabhumi Airport (BKK)",
+      "activity": "เดินทางไปสนามบิน เช็คอินเที่ยวบินไปญี่ปุ่น",
+      "travel_mode": "flight"
+    }
+  ],
+  "2026-05-30": [
+    {
+      "time": "08:00",
+      "origin": "Narita Airport",
+      "destination": "Shinjuku Station",
+      "activity": "นั่งรถไฟ Narita Express เข้าโตเกียว",
+      "travel_mode": "train"
+    },
+    {
+      "time": "12:00",
+      "origin": "Shinjuku Station",
+      "destination": "Matsumoto Station",
+      "activity": "นั่งรถไฟ Azusa Limited Express ไปมัตสึโมโตะ",
+      "travel_mode": "train"
+    },
+    {
+      "time": "15:00",
+      "origin": "Matsumoto Station",
+      "destination": "Matsumoto Hotel",
+      "activity": "เช็คอินที่พักและพักผ่อน",
+      "travel_mode": "walk"
+    },
+    {
+      "time": "16:30",
+      "origin": "Hotel",
+      "destination": "Matsumoto Castle",
+      "activity": "เดินเล่นและถ่ายรูปปราสาทมัตสึโมโตะ",
+      "travel_mode": "walk"
+    }
+  ],
+  "2026-05-31": [
+    {
+      "time": "06:30",
+      "origin": "Matsumoto Hotel",
+      "destination": "Shinano-Omachi Station",
+      "activity": "นั่งรถไฟไปเริ่มเส้นทาง Alpine Route",
+      "travel_mode": "train"
+    },
+    {
+      "time": "07:30",
+      "origin": "Shinano-Omachi",
+      "destination": "Ogizawa",
+      "activity": "นั่งบัสไปสถานีเริ่มต้น Alpine Route",
+      "travel_mode": "bus"
+    },
+    {
+      "time": "08:30",
+      "origin": "Ogizawa",
+      "destination": "Murodo",
+      "activity": "เที่ยว Tateyama Kurobe Alpine Route และกำแพงหิมะ",
+      "travel_mode": "bus/cablecar/ropeway"
+    },
+    {
+      "time": "17:00",
+      "origin": "Murodo",
+      "destination": "Matsumoto",
+      "activity": "เดินทางกลับที่พัก",
+      "travel_mode": "bus/train"
+    }
+  ],
+  "2026-06-01": [
+    {
+      "time": "07:00",
+      "origin": "Matsumoto Hotel",
+      "destination": "Hakuba Station",
+      "activity": "เดินทางไป Hakuba",
+      "travel_mode": "train"
+    },
+    {
+      "time": "10:00",
+      "origin": "Hakuba Station",
+      "destination": "Oide Park",
+      "activity": "ถ่ายรูปวิวเทือกเขา Northern Alps",
+      "travel_mode": "walk/bus"
+    },
+    {
+      "time": "13:00",
+      "origin": "Hakuba",
+      "destination": "Happo Pond",
+      "activity": "ขึ้น gondola และ hiking ไป Happo Pond",
+      "travel_mode": "gondola/hike"
+    },
+    {
+      "time": "17:00",
+      "origin": "Hakuba",
+      "destination": "Matsumoto",
+      "activity": "เดินทางกลับที่พัก",
+      "travel_mode": "train"
+    }
+  ],
+  "2026-06-02": [
+    {
+      "time": "06:30",
+      "origin": "Matsumoto Hotel",
+      "destination": "Kamikochi Bus Terminal",
+      "activity": "นั่งบัสไป Kamikochi",
+      "travel_mode": "bus"
+    },
+    {
+      "time": "08:00",
+      "origin": "Kamikochi",
+      "destination": "Taisho Pond",
+      "activity": "เดินชมวิวภูเขาและถ่ายรูป",
+      "travel_mode": "walk"
+    },
+    {
+      "time": "10:00",
+      "origin": "Taisho Pond",
+      "destination": "Kappa Bridge",
+      "activity": "เดิน trail เลียบแม่น้ำ Azusa",
+      "travel_mode": "walk"
+    },
+    {
+      "time": "16:00",
+      "origin": "Kamikochi",
+      "destination": "Matsumoto",
+      "activity": "นั่งบัสกลับที่พัก",
+      "travel_mode": "bus"
+    }
+  ],
+  "2026-06-03": [
+    {
+      "time": "08:00",
+      "origin": "Matsumoto Hotel",
+      "destination": "Matsumoto Station",
+      "activity": "เช็คเอาท์จากโรงแรม",
+      "travel_mode": "walk"
+    },
+    {
+      "time": "09:30",
+      "origin": "Matsumoto Station",
+      "destination": "Shinjuku Station",
+      "activity": "นั่งรถไฟ Azusa Limited Express กลับโตเกียว",
+      "travel_mode": "train"
+    },
+    {
+      "time": "13:00",
+      "origin": "Shinjuku",
+      "destination": "Tokyo Hotel",
+      "activity": "เช็คอินโรงแรมที่โตเกียว",
+      "travel_mode": "train"
+    }
+  ],
+  "2026-06-04": [
+    {
+      "time": "09:00",
+      "origin": "Tokyo Hotel",
+      "destination": "Shibuya",
+      "activity": "เที่ยว Shibuya Crossing",
+      "travel_mode": "train"
+    },
+    {
+      "time": "11:00",
+      "origin": "Shibuya",
+      "destination": "Harajuku",
+      "activity": "เดิน Takeshita Street",
+      "travel_mode": "walk"
+    },
+    {
+      "time": "14:00",
+      "origin": "Harajuku",
+      "destination": "Omotesando",
+      "activity": "เดินเล่น shopping street",
+      "travel_mode": "walk"
+    }
+  ],
+  "2026-06-05": [
+    {
+      "time": "08:30",
+      "origin": "Tokyo",
+      "destination": "Kamakura Station",
+      "activity": "นั่งรถไฟ JR Yokosuka Line ไป Kamakura",
+      "travel_mode": "train"
+    },
+    {
+      "time": "10:00",
+      "origin": "Kamakura",
+      "destination": "Kotoku-in",
+      "activity": "ชมพระใหญ่ Kamakura Great Buddha",
+      "travel_mode": "walk/bus"
+    },
+    {
+      "time": "13:00",
+      "origin": "Kotoku-in",
+      "destination": "Hasedera Temple",
+      "activity": "ชมวิวทะเลและสวนญี่ปุ่น",
+      "travel_mode": "walk"
+    },
+    {
+      "time": "17:00",
+      "origin": "Kamakura",
+      "destination": "Tokyo",
+      "activity": "เดินทางกลับโตเกียว",
+      "travel_mode": "train"
+    }
+  ],
+  "2026-06-06": [
+    {
+      "time": "09:00",
+      "origin": "Tokyo Hotel",
+      "destination": "Asakusa",
+      "activity": "ไหว้พระ Sensoji Temple",
+      "travel_mode": "train"
+    },
+    {
+      "time": "11:00",
+      "origin": "Asakusa",
+      "destination": "Nakamise Street",
+      "activity": "เดินตลาดซื้อของฝาก",
+      "travel_mode": "walk"
+    },
+    {
+      "time": "14:00",
+      "origin": "Asakusa",
+      "destination": "Ueno",
+      "activity": "เดินสวน Ueno และตลาด Ameyoko",
+      "travel_mode": "train/walk"
+    }
+  ],
+  "2026-06-07": [
+    {
+      "time": "10:00",
+      "origin": "Tokyo Hotel",
+      "destination": "Ginza",
+      "activity": "shopping department stores",
+      "travel_mode": "train"
+    },
+    {
+      "time": "14:00",
+      "origin": "Ginza",
+      "destination": "Akihabara",
+      "activity": "shopping electronics / anime",
+      "travel_mode": "train"
+    }
+  ],
+  "2026-06-08": [
+    {
+      "time": "08:00",
+      "origin": "Tokyo Hotel",
+      "destination": "Narita Airport",
+      "activity": "นั่งรถไฟ Narita Express ไปสนามบิน",
+      "travel_mode": "train"
+    },
+    {
+      "time": "11:00",
+      "origin": "Narita Airport",
+      "destination": "Bangkok",
+      "activity": "ขึ้นเครื่องบินกลับประเทศไทย",
+      "travel_mode": "flight"
+    }
+  ]
 }

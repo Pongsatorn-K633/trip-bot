@@ -2,7 +2,12 @@
   "permissions": {
     "allow": [
       "Bash(conda run -n nlp_env pip install fastapi \"uvicorn[standard]\" line-bot-sdk pythainlp python-dotenv httpx)",
-      "Bash(where python)"
+      "Bash(where python)",
+      "Bash(python \"c:/Users/WindowS 10/Documents/VSCode/trip-bot/dev_tools/patch_roadmap.py\")",
+      "Bash(python dev_tools/patch_roadmap.py)",
+      "WebFetch(domain:docs.opentyphoon.ai)",
+      "Bash(venv/Scripts/pip show openai)",
+      "Bash(venv/Scripts/pip install openai -q)"
     ]
   }
 }

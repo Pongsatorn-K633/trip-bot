@@ -7,13 +7,12 @@
 3. [Architecture](#3-architecture)
 4. [App Flow — Request Lifecycle](#4-app-flow--request-lifecycle)
 5. [Module Responsibilities](#5-module-responsibilities)
-6. [Intent System (Phase 1)](#6-intent-system-phase-1)
+6. [LLM System (Phase 3)](#6-llm-system-phase-3)
 7. [Data Schema — tokyo-matsumoto.json](#7-data-schema--tokyo-matsumotojson)
-8. [Stateless Design — How Dates Work](#8-stateless-design--how-dates-work)
-9. [Phase 2 Upgrade Path (ML NER)](#9-phase-2-upgrade-path-ml-ner)
-10. [Adding New Intents](#10-adding-new-intents)
-11. [Environment Variables](#11-environment-variables)
-12. [Learning & Upgrade Roadmap](#12-learning--upgrade-roadmap)
+8. [Stateless Design](#8-stateless-design)
+9. [Phase 2 Reference (ML NER)](#9-phase-2-reference-ml-ner)
+10. [Environment Variables](#10-environment-variables)
+11. [Learning & Upgrade Roadmap](#11-learning--upgrade-roadmap)
 
 ---
 
@@ -26,10 +25,9 @@ Users ask questions in Thai; the bot answers based on a fixed travel itinerary (
 |---|---|
 | Language | Python 3.10+ |
 | Framework | FastAPI |
-| NLP (Phase 1) | PyThaiNLP — rule-based keyword matching |
-| NLP (Phase 2) | WangchanBERTa fine-tuned for NER *(planned)* |
+| LLM | Typhoon API (`typhoon-v2.5-30b-a3b-instruct`) via OpenAI-compatible SDK |
 | Integration | LINE Messaging API v3 Webhook |
-| State | **None** — fully stateless, driven by LINE event timestamps |
+| State | **None** — fully stateless |
 
 ---
 
@@ -38,26 +36,22 @@ Users ask questions in Thai; the bot answers based on a fixed travel itinerary (
 ```
 trip-bot/
 ├── main.py                         # FastAPI app entry point & router registration
-├── requirements.txt                # Phase 1 dependencies (pip)
-├── .env                            # Secrets — LINE credentials (never commit)
+├── requirements.txt                # pip dependencies
+├── .env                            # Secrets — credentials (never commit)
 ├── .env.example                    # Template for .env
 │
 ├── data/
-│   └── tokyo-matsumoto.json        # Mock itinerary — the single source of truth
+│   └── tokyo-matsumoto.json        # Itinerary — single source of truth
 │
-└── app/
-    ├── routes/
-    │   └── webhook.py              # POST /webhook — LINE event receiver & dispatcher
-    │
-    ├── engine/
-    │   ├── tokenizer.py            # PyThaiNLP wrapper (newmm engine)
-    │   └── intent_engine.py        # Phase 1: keyword → intent classification
-    │
-    ├── models/
-    │   └── ner_placeholder.py      # Phase 2: WangchanBERTa NER stub
-    │
-    └── utils/
-        └── response_builder.py     # Maps intent + timestamp → Thai reply string
+├── app/
+│   ├── routes/
+│   │   └── webhook.py              # POST /webhook — LINE event receiver
+│   └── utils/
+│       └── llm_client.py           # Typhoon API client + system prompt
+│
+└── dev_tools/
+    ├── learning_roadmap.md         # NLP → LLM learning path
+    └── test_thainerwangchan.py     # Phase 2 NER experiments (WangchanBERTa)
 ```
 
 ---
@@ -74,7 +68,7 @@ trip-bot/
                                 ▼
 ┌─────────────────────────────────────────────────────────────────────────┐
 │  main.py  —  FastAPI Application                                        │
-│  • Loads .env credentials                                               │
+│  • load_dotenv() — must run before any os.getenv()                     │
 │  • Registers /webhook router                                            │
 │  • Exposes GET /health                                                  │
 └───────────────────────────────┬─────────────────────────────────────────┘
@@ -84,31 +78,28 @@ trip-bot/
 │  app/routes/webhook.py                                                  │
 │  1. Verify HMAC-SHA256 signature  →  400 if invalid                    │
 │  2. Parse LINE event (MessageEvent + TextMessageContent)                │
-│  3. Extract: user_text (str), timestamp_ms (int)                       │
-│  4. Dispatch to Phase 1 engine (Phase 2 stub commented out)            │
-└────────────┬─────────────────────────────────┬──────────────────────────┘
-             │                                 │
-             ▼                                 ▼
-┌────────────────────────┐       ┌─────────────────────────────────────────┐
-│  app/engine/           │       │  app/utils/response_builder.py          │
-│  tokenizer.py          │       │  1. timestamp_ms → JST date string      │
-│  • newmm tokenization  │──────▶│  2. ITINERARY[date] → today's events   │
-│                        │       │  3. intent → pick fields → Thai string  │
-│  intent_engine.py      │       └──────────────────┬──────────────────────┘
-│  • keyword set lookup  │                          │
-│  • returns intent name │              reply_text  │
-└────────────────────────┘                          ▼
-                                ┌─────────────────────────────────────────┐
-                                │  LINE Reply API                         │
-                                │  MessagingApi.reply_message(...)        │
-                                └─────────────────────────────────────────┘
-
-             ┌──────────────────────────────────────────────────────────┐
-             │  app/models/ner_placeholder.py  (PHASE 2 — STUB)         │
-             │  WangchanBERTa fine-tuned on LST20                       │
-             │  Extracts: {origin: str, destination: str}               │
-             │  Would SHORT-CIRCUIT Phase 1 when entities are found     │
-             └──────────────────────────────────────────────────────────┘
+│  3. Pass raw user_text to llm_client.ask()                             │
+└───────────────────────────────┬─────────────────────────────────────────┘
+                                │  user_text (raw Thai string)
+                                ▼
+┌─────────────────────────────────────────────────────────────────────────┐
+│  app/utils/llm_client.py                                                │
+│  • Itinerary JSON loaded once at startup → injected into system prompt │
+│  • OpenAI SDK with base_url = https://api.opentyphoon.ai/v1            │
+│  • Model: typhoon-v2.5-30b-a3b-instruct                                │
+│  • Returns Thai reply string                                            │
+└───────────────────────────────┬─────────────────────────────────────────┘
+                                │  POST /v1/chat/completions
+                                ▼
+┌─────────────────────────────────────────────────────────────────────────┐
+│  Typhoon API (cloud)                                                    │
+│  • Receives: system prompt (itinerary JSON) + user message             │
+│  • Generates: Thai reply grounded in itinerary data                    │
+│  • Returns: choices[0].message.content                                 │
+└───────────────────────────────┬─────────────────────────────────────────┘
+                                │  reply_text
+                                ▼
+                  LINE Reply API — sends reply to user
 
              ┌──────────────────────────────────────────────────────────┐
              │  data/tokyo-matsumoto.json  (read-only at startup)       │
@@ -122,7 +113,7 @@ trip-bot/
 
 Below is the step-by-step flow for a single user message.
 
-**Example:** User types `"วันนี้ทำอะไรบ้าง"` on 31 May 2026
+**Example:** User types `"วันที่ 29 ทำอะไรบ้าง"`
 
 ```
 Step 1  ── LINE Platform
@@ -135,28 +126,27 @@ Step 2  ── app/routes/webhook.py : async def webhook()
            • Returns {"status": "ok"} to LINE immediately
 
 Step 3  ── app/routes/webhook.py : handle_text_message(event)
-           • user_text    = "วันนี้ทำอะไรบ้าง"
-           • timestamp_ms = 1748649600000  (31 May 2026 00:00 UTC)
+           • user_text = "วันที่ 29 ทำอะไรบ้าง"
+           • Calls ask(user_text)
 
-Step 4  ── app/engine/tokenizer.py : tokenize(user_text)
-           PyThaiNLP newmm engine splits text:
-           ["วันนี้", "ทำอะไร", "บ้าง"]
+Step 4  ── app/utils/llm_client.py : ask(user_text)
+           • Builds messages:
+             - system: _SYSTEM_PROMPT  (Thai assistant rules + full itinerary JSON)
+             - user:   "วันที่ 29 ทำอะไรบ้าง"
+           • POST https://api.opentyphoon.ai/v1/chat/completions
+             model: typhoon-v2.5-30b-a3b-instruct
+             temperature: 0.6 / top_p: 0.6 / max_completion_tokens: 4096
 
-Step 5  ── app/engine/intent_engine.py : classify_intent(user_text)
-           token set  ∩  INTENT_KEYWORDS["Ask_Activity"]
-           "ทำอะไร" matches → returns "Ask_Activity"
+Step 5  ── Typhoon API
+           Reads full itinerary in context → identifies "วันที่ 29" = 2026-05-29
+           Generates grounded Thai reply from itinerary data
 
-Step 6  ── app/utils/response_builder.py : build_response("Ask_Activity", timestamp_ms)
-           • 1748649600000 ms → UTC → JST → "2026-05-31"
-           • ITINERARY["2026-05-31"] → 2 events found
-           • intent == "Ask_Activity" → formats bullet list
+Step 6  ── reply_text =
+           "วันที่ 29 พฤษภาคม กิจกรรมมีดังนี้:
+            • 06:00 น. ตื่นนอน เตรียมตัว
+            • ..."
 
-Step 7  ── reply_text =
-           "กิจกรรมวันนี้:
-            • 06:00 น. ตื่นนอน เตรียมตัวไปกำแพงหิมะ
-            • 07:30 น. เที่ยว Alpine Route"
-
-Step 8  ── LINE Reply API
+Step 7  ── LINE Reply API
            MessagingApi.reply_message_with_http_info(reply_token, TextMessage)
            User receives the reply in LINE chat
 ```
@@ -174,69 +164,69 @@ Step 8  ── LINE Reply API
 ### `app/routes/webhook.py`
 - Owns the `POST /webhook` HTTP endpoint
 - Verifies LINE's HMAC-SHA256 signature — rejects invalid requests with HTTP 400
-- Extracts `user_text` and `timestamp_ms` from the event
-- Orchestrates Phase 1 (calls intent engine + response builder)
-- Contains the commented Phase 2 NER block ready to activate
-- Sends the final reply back via LINE Reply API
+- Extracts `user_text` from the event
+- Calls `ask(user_text)` from `llm_client` and sends reply via LINE Reply API
 
-### `app/engine/tokenizer.py`
-- Thin wrapper around `pythainlp.word_tokenize`
-- Engine: `newmm` (dictionary-based, best general-purpose Thai tokenizer)
-- Strips whitespace tokens, returns `list[str]`
-- Isolated here so the engine can be swapped without touching intent logic
-
-### `app/engine/intent_engine.py`
-- Holds `INTENT_KEYWORDS` dict — the only place to add/edit keyword triggers
-- Converts text → token set → intersects with each intent's keyword set
-- Returns the first matched intent name, or `"Unknown"` as fallback
-- Order of `INTENT_KEYWORDS` dict determines priority when multiple intents match
-
-### `app/utils/response_builder.py`
-- Loads `data/tokyo-matsumoto.json` **once at module import** (not per request)
-- Converts `timestamp_ms` (UTC ms) → JST date string for itinerary lookup
-- Maps `(intent, events)` → formatted Thai reply string
-- All itinerary field access is in one place — add new intents here too
-
-### `app/models/ner_placeholder.py`
-- Documents the Phase 2 plan inside the stub
-- `extract_entities()` raises `NotImplementedError` until implemented
-- `Entities` TypedDict defines the contract for the webhook dispatcher
+### `app/utils/llm_client.py`
+- Loads `data/tokyo-matsumoto.json` **once at startup** and serializes to string
+- Builds the system prompt: Thai assistant persona + itinerary rules + full JSON
+- Creates an `OpenAI` client pointed at `https://api.opentyphoon.ai/v1`
+- `ask(user_text)` — sends system + user message, returns `choices[0].message.content`
+- API key read from `TYPHOON_API_KEY` env var
+- Model: `typhoon-v2.5-30b-a3b-instruct`
 
 ---
 
-## 6. Intent System (Phase 1)
+## 6. LLM System (Phase 3)
 
-### Supported Intents
-
-| Intent | Trigger Keywords (Thai) | JSON Fields Used |
-|---|---|---|
-| `Ask_Wakeup_Time` | ตื่น, ตื่นนอน, เช้า, เวลาตื่น | `events[0].time`, `events[0].activity` |
-| `Ask_Today_Schedule` | วันนี้, กำหนดการ, แผน, ตาราง, โปรแกรม | all `time`, `activity`, `travel_mode` |
-| `Ask_Next_Destination` | ต่อไป, ถัดไป, ไปที่ไหน, จุดหมาย, ปลายทาง | `events[-1].destination`, `activity` |
-| `Ask_Travel_Mode` | ยังไง, รถไฟ, บัส, เครื่องบิน, พาหนะ | all `travel_mode` |
-| `Ask_Activity` | ทำอะไร, กิจกรรม, เที่ยว, ไหว้, ช้อปปิ้ง | all `time`, `activity` |
-| `Ask_Departure_Time` | กี่โมง, เวลาออก, ออกเดินทาง | `events[0].time`, `origin`, `destination` |
-| `Unknown` | *(fallback — no keyword matched)* | — help text returned |
-
-### Classification Algorithm
+### System Prompt Structure
 
 ```python
-tokens = set(tokenize(user_text))          # e.g., {"วันนี้", "ทำอะไร", "บ้าง"}
+_SYSTEM_PROMPT = f"""คุณเป็นผู้ช่วยท่องเที่ยวภาษาไทย ชื่อ "ทริปบอท"
 
-for intent, keywords in INTENT_KEYWORDS:
-    if tokens ∩ set(keywords):             # set intersection
-        return intent                       # first match wins
+ทริปนี้อยู่ในช่วงวันที่ 29 พฤษภาคม – 8 มิถุนายน 2569 (ค.ศ. 2026)
 
-return "Unknown"
+กฎ:
+- ตอบตามข้อมูลกำหนดการด้านล่างเท่านั้น
+- ห้ามแต่งหรือเพิ่มข้อมูลที่ไม่มีในกำหนดการ
+- ตอบเป็นภาษาไทย กระชับและชัดเจน
+- ถ้าไม่มีข้อมูลที่ถามให้บอกตรงๆ ว่าไม่มีข้อมูล
+
+กำหนดการทริป:
+{_ITINERARY_TEXT}"""   # ← full JSON injected here (~2600 tokens)
 ```
 
-> **Priority note:** Because a Python dict preserves insertion order (Python 3.7+),
-> `Ask_Wakeup_Time` is checked before `Ask_Today_Schedule`, and so on.
-> Place more specific intents higher in `INTENT_KEYWORDS` to avoid shadowing.
+The LLM handles everything the old Phase 1 code did manually:
+
+| Phase 1 needed | LLM does automatically |
+|---|---|
+| Regex for date extraction | Reads "วันที่ 29" in context → understands it |
+| Gazetteer for place names | Matches places from the injected JSON |
+| Intent classification | Infers what the user wants from phrasing |
+| Typo handling | Predicts most likely meaning from context |
+
+### Why Full Context Injection (not RAG)
+
+The itinerary JSON is ~2600 tokens — well within the 128K context window.
+No vector search or retrieval needed — the LLM reads all data every request.
+
+RAG would only be needed if data grew beyond the context limit (100+ trips, external guides, etc.).
+
+### Model Parameters
+
+| Parameter | Value | Reason |
+|---|---|---|
+| `temperature` | 0.6 | Focused but not rigid |
+| `top_p` | 0.6 | Reduces unlikely token sampling |
+| `max_completion_tokens` | 4096 | Total budget: ~2635 prompt + ~1461 reply |
+
+> Note: Typhoon's `max_completion_tokens` is the **total** limit (prompt + output), not output-only.
 
 ---
 
 ## 7. Data Schema — tokyo-matsumoto.json
+
+> To change the bot's knowledge: edit this file and restart the server. No code changes needed.
 
 ```jsonc
 {
@@ -259,61 +249,21 @@ No code changes are needed — `response_builder.py` picks it up automatically.
 
 ---
 
-## 8. Stateless Design — How Dates Work
+## 8. Stateless Design
 
 The bot holds **zero session state**. Every request is self-contained:
 
-```
-LINE event.timestamp (UTC milliseconds)
-         │
-         │  datetime.fromtimestamp(ts / 1000, tz=UTC)
-         ▼
-   UTC datetime object
-         │
-         │  .astimezone(JST)   ← JST = UTC+9
-         ▼
-   JST datetime object
-         │
-         │  .strftime("%Y-%m-%d")
-         ▼
-   "2026-05-31"  ← used as key into ITINERARY dict
-```
-
-This means:
-- No database, no session store, no cache needed
-- Two users messaging at the same moment always get the same day's itinerary
-- Works correctly across midnight (UTC vs JST boundary handled by the conversion)
+- No database, no session store, no cache
+- The full itinerary JSON is re-injected into the system prompt on every call
+- Date/time context is determined by the LLM reading the user's message
+- Two users asking the same question at the same time get the same answer
 
 ---
 
-## 9. Phase 2 Upgrade Path (ML NER)
+## 9. Phase 2 Reference (ML NER)
 
-### Goal
-Extract free-form location entities from Thai text to answer custom routing queries.
-
-**Example:** `"จากฮาคุบะไปคามิโคจิยังไง"` → `{origin: "ฮาคุบะ", destination: "คามิโคจิ"}`
-
-### Implementation Plan
-
-| Step | Task |
-|---|---|
-| 1 | Fine-tune `airesearch/wangchanberta-base-att-spm-uncased` on LST20 with a BIO token-classification head |
-| 2 | Save checkpoint to `app/models/checkpoints/wangchanberta-ner/` |
-| 3 | Implement `extract_entities()` in `app/models/ner_placeholder.py` using `transformers.pipeline("ner", aggregation_strategy="simple")` |
-| 4 | In `webhook.py`, uncomment the Phase 2 block — it SHORT-CIRCUITs Phase 1 when both entities are found |
-| 5 | Call a Map API (Google Maps Directions) with the extracted entities |
-
-### Activation in webhook.py
-
-```python
-# Uncomment this block in handle_text_message():
-try:
-    entities = extract_entities(user_text)
-    if entities["origin"] and entities["destination"]:
-        reply_text = fetch_route(entities["origin"], entities["destination"])
-except NotImplementedError:
-    pass  # Falls through to Phase 1 result
-```
+> Phase 2 was a learning exercise — the production bot uses LLM (Phase 3).
+> NER experiments are in `dev_tools/test_thainerwangchan.py`.
 
 ### Entity Extraction Strategy — Which Tool for What
 
@@ -443,40 +393,19 @@ accelerate>=0.27.0   # fine-tuning only
 
 ---
 
-## 10. Adding New Intents
-
-To add a new intent (e.g., `Ask_Hotel_Info`):
-
-**Step 1** — Add keywords to `app/engine/intent_engine.py`:
-```python
-"Ask_Hotel_Info": ["โรงแรม", "ที่พัก", "เช็คอิน", "เช็คเอาท์", "ห้อง"],
-```
-
-**Step 2** — Add a response handler to `app/utils/response_builder.py`:
-```python
-elif intent == "Ask_Hotel_Info":
-    checkin = next((e for e in events if "เช็คอิน" in e["activity"]), None)
-    if checkin:
-        return f"เช็คอินเวลา {checkin['time']} น. ที่ {checkin['destination']} ค่ะ"
-    return "ไม่มีข้อมูลโรงแรมสำหรับวันนี้ค่ะ"
-```
-
-No other files need to be changed.
-
----
-
-## 11. Environment Variables
+## 10. Environment Variables
 
 | Variable | Description | Where to get it |
 |---|---|---|
-| `LINE_CHANNEL_SECRET` | Used to verify webhook signatures (HMAC-SHA256) | LINE Developers Console → Messaging API → Channel secret |
-| `LINE_CHANNEL_ACCESS_TOKEN` | Used to call the LINE Reply API | LINE Developers Console → Messaging API → Channel access token (long-lived) |
+| `LINE_CHANNEL_SECRET` | Verifies webhook signatures (HMAC-SHA256) | LINE Developers Console → Basic settings → Channel secret |
+| `LINE_CHANNEL_ACCESS_TOKEN` | Calls the LINE Reply API | LINE Developers Console → Messaging API → Channel access token (long-lived) |
+| `TYPHOON_API_KEY` | Authenticates requests to Typhoon LLM API | [playground.opentyphoon.ai](https://playground.opentyphoon.ai) → Settings → API Keys |
 
 Store these in `.env` (never commit this file). See `.env.example` for the template.
 
 ---
 
-## 12. Learning & Upgrade Roadmap
+## 11. Learning & Upgrade Roadmap
 
 This section documents the planned learning path from the current rule-based Phase 1 bot through ML-based NER (Phase 2) to a production LLM-powered chatbot (Phase 3).
 
@@ -513,96 +442,16 @@ This is required for NER: the same word (e.g., "มัตสึโมโต") ca
 
 ---
 
-### Phase 3 — LLM-powered Chatbot (Production Standard)
+### Phase 3 — LLM-powered Chatbot (Current — Done)
 
-The goal is to replace the rule-based handler with an LLM while keeping reliable entity extraction.
+The bot now uses full context injection: the entire itinerary JSON is pasted into the system prompt on every request. The LLM handles date parsing, place matching, intent inference, and Thai generation in one step.
 
-| Step | Topic | What you learn |
-|---|---|---|
-| 1 | **Why LLMs differ** | Decoder-only architecture, autoregressive generation, emergent instruction-following without task-specific fine-tuning |
-| 2 | **Prompt engineering** | System prompts, structured output formatting, temperature/top-p control |
-| 3 | **Context injection** | Inject itinerary JSON into the system prompt — no RAG needed for small datasets |
-| 4 | **Replace only the handler** | Remove `intent_engine.py` and `response_builder.py`; keep Regex and Gazetteer for entity extraction |
+See [Section 6](#6-llm-system-phase-3) for prompt structure and model parameters.
 
-#### Production Architecture — Hybrid Extraction + LLM Generation
-
-This is the recommended production pattern: **structured extraction feeds precise context to the LLM**.
-
-```
-User input
-    │
-    ├─ Regex       → date     = "2026-05-29"        (exact, reliable)
-    ├─ Gazetteer   → location = "มัตสึโมโต"          (known places)
-    └─ NER         → location fallback               (unknown places, filtered)
-    │
-    ▼
-events = ITINERARY[date]          ← precise lookup, no vector search
-    │
-    ▼
-LLM prompt:
-    system = "ตอบภาษาไทย ใช้ข้อมูลนี้เท่านั้น: {events}"
-    user   = raw user_text
-    │
-    ▼
-LLM generates structured Thai reply with formatted output
-```
-
-**Why this is good production practice:**
-
-| Concern | How it's handled |
-|---|---|
-| Date/place accuracy | Regex + Gazetteer — 100% reliable, no hallucination risk |
-| Natural language output | LLM generates fluent Thai reply |
-| Formatted output | Instruct LLM via system prompt (bullets, bold times, etc.) |
-| Cost | Regex/Gazetteer are free; only LLM call costs money |
-| Unknown places | NER fallback handles open-vocabulary entities |
-
-**What a Phase 3 webhook handler looks like:**
-
-```python
-import json, requests
-
-ITINERARY = json.load(open("data/tokyo-matsumoto.json"))
-KNOWN_PLACES = ["มัตสึโมโต", "คามิโคจิ", "ฮาคุบะ", "โตเกียว"]
-
-def handle_message(user_text: str, timestamp_ms: int) -> str:
-    # 1. Structured extraction
-    date     = _extract_date_from_text(user_text) or _events_for_day(timestamp_ms)[0]
-    location = next((p for p in KNOWN_PLACES if p in user_text), None)
-    events   = ITINERARY.get(date, [])
-
-    # 2. LLM generates reply from precise context
-    context = json.dumps(events, ensure_ascii=False)
-    response = requests.post("http://localhost:11434/api/chat", json={
-        "model": "typhoon2",
-        "stream": False,
-        "messages": [
-            {
-                "role": "system",
-                "content": f"""คุณเป็นผู้ช่วยท่องเที่ยวภาษาไทย
-ตอบตามข้อมูลนี้เท่านั้น ห้ามแต่งเอง:
-{context}
-
-รูปแบบการตอบ:
-- ขึ้นต้นด้วย [วันที่ — สถานที่]
-- แสดงกิจกรรมเป็น bullet points
-- เวลาใส่ในวงเล็บ เช่น (09:00)"""
-            },
-            {"role": "user", "content": user_text}
-        ]
-    })
-    return response.json()["message"]["content"]
-```
-
-**LLM options (local, free, no API key):**
-
-| Model | Thai quality | Size | Notes |
-|---|---|---|---|
-| `typhoon2` | Best | ~4 GB | Built for Thai by SCB10X |
-| `qwen2.5` | Very good | ~4 GB | Strong multilingual |
-| `llama3.2` | Decent | ~2 GB | Smaller, faster |
-
-Install: `ollama pull typhoon2` (after installing Ollama from ollama.com)
+**Current stack:**
+- Model: `typhoon-v2.5-30b-a3b-instruct` (Typhoon API, free tier)
+- SDK: `openai` Python SDK with `base_url="https://api.opentyphoon.ai/v1"`
+- No RAG, no NER, no entity extraction — LLM reads everything directly
 
 **When RAG becomes necessary:**
 - 10+ trips where full JSON no longer fits in context window
@@ -613,8 +462,8 @@ Install: `ollama pull typhoon2` (after installing Ollama from ollama.com)
 
 ### Architecture Evolution Summary
 
-| Phase | Entity Extraction | Response Generation | Flexibility |
+| Phase | Entity Extraction | Response Generation | Status |
 |---|---|---|---|
-| **1 (done)** | Keyword set intersection | Hardcoded templates | Low — every case hand-coded |
-| **2 (learning)** | WangchanBERTa NER | Hardcoded templates | Medium — handles free-form locations |
-| **3 (production)** | Regex + Gazetteer + NER | LLM (Ollama local) | High — natural Thai, formatted output |
+| **1** | Keyword set intersection | Hardcoded templates | Replaced |
+| **2** | WangchanBERTa NER | Hardcoded templates | Learning only (dev_tools) |
+| **3** | LLM reads full JSON | Typhoon API (cloud) | **Current** |

@@ -19,9 +19,11 @@ ner = pipeline("ner", model=model, tokenizer=tokenizer, aggregation_strategy="si
 # ── 4. Test sentences ────────────────────────────────────────────────────────
 test_sentences = [
     "ไปมัตสึโมโตวันที่ 29 พฤษภาคม",
+    "ไปมัตสึโมตวันที่ 29 พฤษาคม",
     "วันที่ 30 พ.ค. ออกเดินทางจากฮาคุบะไปคามิโคจิ",
     "เช็คอินโรงแรมที่โตเกียวตอน 15:00 น.",
     "วันที่ 29 ทำอะไรบ้าง",
+    "29"
 ]
 
 USEFUL_LABELS = {"LOCATION", "DATE", "TIME", "FACILITY"}

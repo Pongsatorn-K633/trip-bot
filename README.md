@@ -1,7 +1,7 @@
 # trip-bot — LINE Itinerary Chatbot (Tokyo & Matsumoto)
 
 A stateless Thai-language chatbot for the LINE Messaging API.
-Users ask questions in Thai about a fixed travel itinerary and receive answers instantly.
+Users ask questions in Thai about a fixed travel itinerary and receive answers powered by the Typhoon LLM.
 
 ---
 
@@ -11,7 +11,8 @@ Users ask questions in Thai about a fixed travel itinerary and receive answers i
 |---|---|---|
 | Python | 3.10+ | Install from [python.org](https://python.org) — pip + venv included |
 | LINE Developers Account | — | Free at [developers.line.biz](https://developers.line.biz) |
-| ngrok | any | For local webhook testing |
+| Typhoon API Key | — | Free at [playground.opentyphoon.ai](https://playground.opentyphoon.ai) |
+| ngrok | 3.20.0+ | For local webhook testing |
 
 ---
 
@@ -21,19 +22,17 @@ Users ask questions in Thai about a fixed travel itinerary and receive answers i
 trip-bot/
 ├── main.py                   # App entry point
 ├── requirements.txt          # pip dependencies
-├── .env                      # Your LINE credentials (create this)
+├── .env                      # Your credentials (create this — never commit)
 ├── .env.example              # Template
 ├── data/
-│   └── tokyo-matsumoto.json  # Itinerary data
-└── app/
-    ├── routes/webhook.py     # LINE webhook endpoint
-    ├── engine/
-    │   ├── tokenizer.py      # Thai tokenizer
-    │   └── intent_engine.py  # Rule-based intent matching
-    ├── models/
-    │   └── ner_placeholder.py  # Phase 2 NER stub
-    └── utils/
-        └── response_builder.py  # Builds Thai replies
+│   └── tokyo-matsumoto.json  # Itinerary data (single source of truth)
+├── app/
+│   ├── routes/webhook.py     # LINE webhook endpoint
+│   └── utils/
+│       └── llm_client.py     # Typhoon API client + system prompt
+└── dev_tools/
+    ├── learning_roadmap.md   # NLP → LLM learning path
+    └── test_thainerwangchan.py  # Phase 2 NER experiments
 ```
 
 ---
@@ -61,16 +60,15 @@ pip install -r requirements.txt
 ```
 
 This installs:
-- `fastapi` — web framework
-- `uvicorn` — ASGI server
+- `fastapi` + `uvicorn` — web framework and server
 - `line-bot-sdk` — LINE Messaging API v3
-- `pythainlp` — Thai NLP tokenizer
+- `openai` — Typhoon API client (OpenAI-compatible)
 - `python-dotenv` — reads `.env` file
-- `httpx` — HTTP client (required by line-bot-sdk)
+- `httpx` — required internally by line-bot-sdk
 
 ### Step 4 — Create your `.env` file
 
-Copy the template and fill in your LINE credentials:
+Copy the template and fill in your credentials:
 
 ```bash
 cp .env.example .env
@@ -81,9 +79,11 @@ Open `.env` and set:
 ```env
 LINE_CHANNEL_SECRET=your_channel_secret_here
 LINE_CHANNEL_ACCESS_TOKEN=your_channel_access_token_here
+TYPHOON_API_KEY=your_typhoon_api_key_here
 ```
 
-> How to get these values: see **LINE Developer Console Setup** below.
+> How to get LINE credentials: see **LINE Developer Console Setup** below.
+> How to get Typhoon API key: sign up at [playground.opentyphoon.ai](https://playground.opentyphoon.ai) → Settings → API Keys.
 
 ---
 
@@ -120,8 +120,6 @@ curl http://localhost:8000/health
 # → {"status":"ok"}
 ```
 
-The interactive API docs are available at `http://localhost:8000/docs`.
-
 ### Expose to LINE with ngrok
 
 LINE requires a **public HTTPS URL** for the webhook. Use ngrok to tunnel your local server:
@@ -149,18 +147,17 @@ Set the webhook URL in LINE Developers Console:
 
 Add your LINE Official Account as a friend using the QR code in the LINE Developers Console (Messaging API tab).
 
-Then send any of these Thai messages:
+The bot understands **free-form Thai** — no keywords required. Just ask naturally:
 
-| Thai Message | Intent Triggered | Example Reply |
-|---|---|---|
-| `วันนี้ทำอะไรบ้าง` | Ask_Activity | กิจกรรมวันนี้: • 06:00 น. ตื่นนอน... |
-| `กำหนดการวันนี้` | Ask_Today_Schedule | 📅 กำหนดการวันที่ 2026-05-31:... |
-| `ตื่นกี่โมง` | Ask_Wakeup_Time | วันที่ ... ตื่นนอนเวลา 06:00 น. ค่ะ |
-| `ไปที่ไหนต่อ` | Ask_Next_Destination | จุดหมายสุดท้ายของวันนี้คือ... |
-| `เดินทางยังไง` | Ask_Travel_Mode | วันนี้เดินทางด้วย: bus/train, train ค่ะ |
-| `ออกเดินทางกี่โมง` | Ask_Departure_Time | ออกเดินทางครั้งแรกวันนี้เวลา... |
+```
+วันที่ 29 ทำอะไรบ้าง
+วันแรกไปที่ไหน
+คืนวันที่ 31 พักที่ไหน
+จากมัตสึโมโตไปคามิโคจิยังไง
+มีกิจกรรมอะไรวันที่ 2 มิถุนายน
+```
 
-> The bot answers based on the **current JST date**. Itinerary dates run from **29 May – 8 June 2026**. Messages sent outside this range will receive a "no schedule found" reply.
+> The itinerary covers **29 May – 8 June 2026**. Questions about dates outside this range will get a "no information" reply.
 
 ---
 
@@ -182,11 +179,11 @@ Each date entry follows this structure:
 ]
 ```
 
+The full JSON is injected into the LLM system prompt on every request — changes take effect on the next server restart.
+
 ---
 
 ## Deploying to Production
-
-For production, **do not use conda**. Use pip with a clean Python environment or Docker.
 
 ### Option A — VPS / Cloud VM (pip + venv)
 
@@ -201,8 +198,6 @@ Use `systemd` or `supervisor` to keep the process running.
 
 ### Option B — Docker
 
-Create a `Dockerfile`:
-
 ```dockerfile
 FROM python:3.11-slim
 WORKDIR /app
@@ -212,22 +207,18 @@ COPY . .
 CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000"]
 ```
 
-Build and run:
-
 ```bash
-docker build -t line-itinerary-bot .
-docker run -p 8000:8000 --env-file .env line-itinerary-bot
+docker build -t trip-bot .
+docker run -p 8000:8000 --env-file .env trip-bot
 ```
 
 ### Option C — Managed Platforms (Railway, Render, Fly.io)
 
-These platforms support pip natively. Push your code, set the two environment variables in the platform dashboard, and set the start command to:
+Push your code, set the three environment variables in the platform dashboard, and set the start command to:
 
 ```
 uvicorn main:app --host 0.0.0.0 --port 8000
 ```
-
-Then update the LINE webhook URL to your platform's public URL.
 
 ---
 
@@ -237,9 +228,11 @@ Then update the LINE webhook URL to your platform's public URL.
 |---|---|
 | `Import "fastapi" could not be resolved` in VS Code | Press `Ctrl+Shift+P` → Python: Select Interpreter → choose the `venv` interpreter |
 | LINE Verify webhook returns error | Check that ngrok is running and the URL ends with `/webhook` |
-| Bot replies "ไม่พบกำหนดการ..." | The current JST date is outside `2026-05-29` to `2026-06-08` |
 | `InvalidSignatureError` | `LINE_CHANNEL_SECRET` in `.env` does not match the console value |
 | `401` from LINE Reply API | `LINE_CHANNEL_ACCESS_TOKEN` is wrong or expired — reissue in console |
+| Bot replies with error message | Check that `TYPHOON_API_KEY` is set in `.env` and the server was restarted after adding it |
+| ngrok ERR_NGROK_334 | Old ngrok session still running — run `taskkill /IM ngrok.exe /F` then retry |
+| ngrok version too old | Download latest from ngrok.com and run from the download folder |
 
 ---
 
@@ -248,6 +241,6 @@ Then update the LINE webhook URL to your platform's public URL.
 See [developer_guide.md](developer_guide.md) for:
 - Full architecture diagram
 - Complete app flow walkthrough
-- Intent system details
-- How to add new intents
-- Phase 2 ML NER upgrade plan
+- LLM system prompt details
+- Phase 2 NER experiments and notes
+- How to update the itinerary and extend the bot
