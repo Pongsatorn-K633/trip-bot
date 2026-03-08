@@ -1,3 +1,12 @@
+---
+title: trip-bot
+emoji: 🗾
+colorFrom: blue
+colorTo: green
+sdk: docker
+pinned: false
+---
+
 # trip-bot — LINE Itinerary Chatbot (Tokyo & Matsumoto)
 
 A stateless Thai-language chatbot for the LINE Messaging API.
