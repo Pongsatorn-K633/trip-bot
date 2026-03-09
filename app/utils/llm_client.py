@@ -118,7 +118,7 @@ def ask(user_text: str) -> str:
                 {"role": "user",   "content": user_text},
             ],
             temperature=0.6,
-            max_completion_tokens=4096,
+            max_completion_tokens=8192,
             top_p=0.6,
         )
         return response.choices[0].message.content
