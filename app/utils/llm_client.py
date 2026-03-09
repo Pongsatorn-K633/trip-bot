@@ -51,19 +51,20 @@ def _all_destinations() -> list[dict]:
     return result
 
 
-def _find_map_url(location: str) -> str | None:
-    """Code-level lookup: exact/substring match on name and tags."""
+def _find_map_url(location: str) -> tuple[str, str] | None:
+    """Code-level lookup. Returns (matched_name, map_url) or None."""
     loc = location.lower()
     words = [w for w in loc.split() if len(w) >= 3]
     for dest_obj in _all_destinations():
-        dest = dest_obj.get("name", "").lower()
+        name = dest_obj.get("name", "")
+        dest = name.lower()
         map_url = dest_obj.get("map_url")
         tags = [t.lower() for t in dest_obj.get("tags", [])]
         if any(tag in loc for tag in tags):
-            return map_url
+            return name, map_url
         for word in words:
             if word in dest:
-                return map_url
+                return name, map_url
     return None
 
 
@@ -99,13 +100,14 @@ def ask(user_text: str) -> str:
     stripped = user_text.strip()
     if stripped.lower().startswith("map "):
         location = stripped[4:].strip()
-        url = _find_map_url(location)
-        if not url:
+        result = _find_map_url(location)
+        if not result:
             matched = _llm_resolve_location(location)
             if matched:
-                url = _find_map_url(matched)
-        if url:
-            return f"แผนที่ {location}:\n{url}"
+                result = _find_map_url(matched)
+        if result:
+            name, url = result
+            return f"แผนที่ {name}:\n{url}"
         return f"ไม่พบข้อมูลแผนที่สำหรับ '{location}' ในกำหนดการทริปนี้ครับ"
 
     try:
