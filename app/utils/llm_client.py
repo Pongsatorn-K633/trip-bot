@@ -6,7 +6,7 @@ from pathlib import Path
 # ---------------------------------------------------------------------------
 # Itinerary — loaded once at startup, injected into every system prompt
 # ---------------------------------------------------------------------------
-_DATA_PATH = Path(__file__).parent.parent.parent / "data" / "tokyo-matsumoto.json"
+_DATA_PATH = Path(__file__).parent.parent.parent / "data" / "tokyo-nagano.json"
 
 with open(_DATA_PATH, encoding="utf-8") as _f:
     _ITINERARY: dict = json.load(_f)
@@ -38,14 +38,60 @@ _SYSTEM_PROMPT = f"""คุณเป็นผู้ช่วยท่องเ�
 # Public API
 # ---------------------------------------------------------------------------
 
-def _find_map_url(location: str) -> str | None:
-    loc = location.lower()
+def _all_destinations() -> list[dict]:
+    """Return unique destinations with map_url from the itinerary."""
+    seen, result = set(), []
     for day_events in _ITINERARY.values():
         for event in day_events:
-            dest = event.get("destination", "").lower()
-            if loc in dest or dest in loc:
-                return event.get("map_url")
+            dest_obj = event.get("destination", {})
+            name = dest_obj.get("name", "")
+            if name and name not in seen:
+                seen.add(name)
+                result.append(dest_obj)
+    return result
+
+
+def _find_map_url(location: str) -> str | None:
+    """Code-level lookup: exact/substring match on name and tags."""
+    loc = location.lower()
+    words = [w for w in loc.split() if len(w) >= 3]
+    for dest_obj in _all_destinations():
+        dest = dest_obj.get("name", "").lower()
+        map_url = dest_obj.get("map_url")
+        tags = [t.lower() for t in dest_obj.get("tags", [])]
+        if any(tag in loc for tag in tags):
+            return map_url
+        for word in words:
+            if word in dest:
+                return map_url
     return None
+
+
+def _llm_resolve_location(user_location: str) -> str | None:
+    """Ask LLM to fuzzy-match user query to the closest destination name."""
+    dest_list = "\n".join(f"- {d['name']}" for d in _all_destinations())
+    try:
+        response = _CLIENT.chat.completions.create(
+            model=_MODEL,
+            messages=[
+                {
+                    "role": "system",
+                    "content": (
+                        f"รายชื่อสถานที่ในกำหนดการทริป:\n{dest_list}\n\n"
+                        "ผู้ใช้ถามหาแผนที่ของสถานที่ใด? "
+                        "ตอบเฉพาะชื่อสถานที่จากรายการข้างต้นเท่านั้น "
+                        "ถ้าไม่มีที่ตรงให้ตอบว่า NONE"
+                    ),
+                },
+                {"role": "user", "content": user_location},
+            ],
+            temperature=0,
+            max_completion_tokens=30,
+        )
+        result = response.choices[0].message.content.strip()
+        return None if result.upper() == "NONE" else result
+    except Exception:
+        return None
 
 
 def ask(user_text: str) -> str:
@@ -54,6 +100,10 @@ def ask(user_text: str) -> str:
     if stripped.lower().startswith("map "):
         location = stripped[4:].strip()
         url = _find_map_url(location)
+        if not url:
+            matched = _llm_resolve_location(location)
+            if matched:
+                url = _find_map_url(matched)
         if url:
             return f"แผนที่ {location}:\n{url}"
         return f"ไม่พบข้อมูลแผนที่สำหรับ '{location}' ในกำหนดการทริปนี้ครับ"
